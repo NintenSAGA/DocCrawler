@@ -7,6 +7,7 @@ import sys
 import re
 import requests
 import bs4
+import yaml
 
 from urllib import parse as _parse
 from rich.console import Console
@@ -17,12 +18,16 @@ from rich.markup import escape
 
 import rich
 
-DOWNLOAD_PATH = './Download/'
+ROOT_PATH = sys.path[0]
+DOWNLOAD_PATH = os.path.join(ROOT_PATH, 'Download/')
+CONFIG_PATH = os.path.join(ROOT_PATH, '../config.yaml')
+
+console = Console()
 
 
 class BoxProgress(_progress.Progress):
     def get_renderables(self):
-        yield _panel.Panel(self.make_tasks_table(self.tasks))
+        yield _panel.Panel(self.make_tasks_table(self.tasks), border_style='white')
 
 
 def download_doc(download_path: str, url: str, filename: str) -> str:
@@ -43,57 +48,36 @@ def fetch_url(url: str):
     return response.content.decode('utf-8')
 
 
-def driver():
-    console = Console()
-    console.clear()
-
-    console.print(_panel.Panel('[bold italic]DocCrawler', expand=True, title_align='center'), style='green')
-
-    # Argument parsing
-    arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('-u', '--url', help='Target url', type=str)
-    arg_parser.add_argument('-e', '--ex', help='Target extensions.', type=str, nargs='+')
-    arg_parser.add_argument('-a', '--all', help='Match all', action='store_true')
-    arg_parser.add_argument('-n', '--name', help='Use tag text as filename', action='store_true')
-    arg_parser.add_argument('-d', '--dir', help='Output directory', type=str, default='')
-    arg_parser.add_argument('-o', '--order', help='Add order prefix', action='store_true')
-    args = arg_parser.parse_args()
+def single_task(args):
+    console.print()
 
     # Fetch url
-    if args.url:
-        url = args.url
-    else:
+    url = args['url']
+    if not args['url']:
         console.print(_panel.Panel('Please enter the url:'))
         url = console.input('> ')
 
     if not url.startswith('http'):
         url = 'https://' + url
-
     # console.print(f'< [white]URL: {url}')
 
+    # Fetch URL #
     with console.status(f"Fetching {url}..."):
         try:
             html_text = fetch_url(url)
         except requests.exceptions.RequestException as e:
             console.print(f'[red]Fetch failed!\n{e}')
             sys.exit(1)
-    console.print('< [white]HTML fetched')
 
     # Load extensions
     extensions = []
-    if not args.all:
-        if args.ex:
-            extensions = args.ex
+    if not args['all']:
+        if args['ex']:
+            extensions = args['ex']
         else:
             console.print('Please enter file extensions\n(Separate with blank, no leading dot. Empty for all.):')
             extensions = console.input('> ')
             extensions = extensions.split()
-
-    if len(extensions) == 0:
-        args.all = True
-        console.print('< [white]Matching all extensions')
-    else:
-        console.print(f'< [white]Extensions: {extensions}')
 
     # Parse download url from HTML
     soup = bs4.BeautifulSoup(html_text, 'html.parser')
@@ -101,15 +85,8 @@ def driver():
     # title = title.replace(' ', '_')
     download_path = os.path.join(DOWNLOAD_PATH, title)
 
-    console.print(
-        _panel.Panel(
-            title=f'[green underline bold italic]{title}[/]',
-            renderable=f'[white]Will be saved at [underline]{escape(download_path)}[/underline]'
-        )
-    )
-
-    if args.dir != '':
-        download_path = args.dir
+    if args['dir'] != '':
+        download_path = args['dir']
         if not os.path.exists(download_path):
             console.print(f'[red]Directory {download_path} not exists!')
             sys.exit(1)
@@ -117,12 +94,25 @@ def driver():
         if not os.path.exists(download_path):
             os.makedirs(download_path)
 
+    console.print(
+        _panel.Panel(
+            title=f'[dark_orange underline bold italic]{title}[/]',
+            renderable=f'[white]Will be saved at [underline]{escape(download_path)}[/underline]'
+        ), style='dark_orange'
+    )
+
+    if len(extensions) == 0:
+        args['all'] = True
+        console.print('Matching all extensions')
+    else:
+        console.print(f'Extensions: {extensions}')
+
     queue = []
     url_set = set()
     order = 1
     with console.status('Crawling documents...'):
         try:
-            if args.all:
+            if args['all']:
                 ext_str = '[^/]+'
             else:
                 ext_str = f"({'|'.join(extensions)})"
@@ -137,8 +127,8 @@ def driver():
 
         for tag in tags:
             furl = tag['href']
-            name = tag.text if args.name else furl.split('/')[-1]
-            if args.order:
+            name = tag.text if args['name'] else furl.split('/')[-1]
+            if args['order']:
                 name = f'{order}. {name}'
                 order += 1
             furl = _parse.urljoin(url, furl)
@@ -170,7 +160,7 @@ def driver():
             for future in done:
                 if future.exception() is None:
                     name = future.result()
-                    progress.console.print(f'> [white]Downloaded: {name}')
+                    progress.console.print(f'< [white]Downloaded: {name}')
                 else:
                     failed += 1
                 completed += 1
@@ -185,6 +175,71 @@ def driver():
     columns.add_renderable(_panel.Panel(f'{success}', title='Success', style='green'))
     columns.add_renderable(_panel.Panel(f'{failed}', title='Failed', style='red'))
     console.print(columns, justify='center')
+
+    console.rule('[light_slate_blue bold italic]Task complete![/]', style='light_slate_blue')
+
+
+def load_config(args) -> list[dict] | None:
+    # Load config
+    if not args['url']:
+        config_dict = {}
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, 'r') as fd:
+                config_dict = yaml.safe_load(fd)
+        if 'websites' in config_dict and len(config_dict['websites']) != 0:
+            entries = list(config_dict['websites'].items())
+            entries.insert(0, ('None', ''))
+            entries.append(('All', ''))
+            choices = [str(i) for i in range(0, len(entries))]
+            choice_prompt = []
+            for i, entry in enumerate(entries):
+                choice_prompt.append(f'[green bold]{i}[/] - {entry[0]}')
+            console.print(_panel.Panel('\n'.join(choice_prompt), title='Found existed presets:'))
+
+            choice = _prompt.IntPrompt.ask('Choose one', choices=choices, default=0, show_default=False)
+            if choice == len(choices) - 1:
+                arg_list = []
+                for i in range(1, len(entries) - 1):
+                    web_config = entries[i][1]
+                    tmp_args = args.copy()
+                    for key, val in web_config.items():
+                        tmp_args[key] = val
+                    arg_list.append(tmp_args)
+                return arg_list
+            elif choice != 0:
+                web_config = entries[choice][1]
+                for key, val in web_config.items():
+                    args[key] = val
+    return None
+
+
+def parse_args():
+    # Argument parsing
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument('-u', '--url', help='Target url', type=str)
+    arg_parser.add_argument('-e', '--ex', help='Target extensions.', type=str, nargs='+')
+    arg_parser.add_argument('-a', '--all', help='Match all', action='store_true')
+    arg_parser.add_argument('-n', '--name', help='Use tag text as filename', action='store_true')
+    arg_parser.add_argument('-d', '--dir', help='Output directory', type=str, default='')
+    arg_parser.add_argument('-o', '--order', help='Add order prefix', action='store_true')
+    args = arg_parser.parse_args()
+    return vars(args)
+
+
+def driver():
+    console.clear()
+    console.print(_panel.Panel('[bold italic]DocCrawler', expand=True, title_align='center'), style='green')
+
+    args = parse_args()
+    multi_args = load_config(args)
+
+    if multi_args is None:
+        single_task(args)
+    else:
+        console.print(_panel.Panel('Will run all the presets'), style='green')
+        for single_args in multi_args:
+            single_task(single_args)
+        console.rule('[green bold italic]All tasks complete![/]', style='green')
 
 
 if __name__ == '__main__':
