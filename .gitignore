@@ -4,6 +4,7 @@
 /dist/
 moodle_config.yaml
 general_config.yaml
+doccrawler/test.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
