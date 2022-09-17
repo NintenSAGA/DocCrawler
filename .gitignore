@@ -2,7 +2,8 @@
 /doccrawler/Download/**
 /.idea/
 /dist/
-config.yaml
+moodle_config.yaml
+general_config.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
