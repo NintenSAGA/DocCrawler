@@ -11,6 +11,7 @@ from rich.markup import escape
 
 from const import DOWNLOAD_PATH, console
 
+
 class BoxProgress(_progress.Progress):
     def get_renderables(self):
         yield _panel.Panel(self.make_tasks_table(self.tasks), border_style='white')
@@ -32,6 +33,14 @@ def download_doc(download_path: str, url: str, filename: str) -> str:
 def fetch_url(url: str):
     response = requests.get(url)
     return response.content.decode('utf-8')
+
+
+class CrawlTask:
+    def __init__(self):
+        pass
+
+    def run(self):
+        pass
 
 
 def single_task(args):

@@ -2,22 +2,20 @@
 
 import argparse
 import os.path
-import sys
 
 import yaml
-
 from rich import panel as _panel, prompt as _prompt
 
-from const import CONFIG_PATH, console
-from engine import single_task
+import const
+import engine
 
 
 def load_config(args) -> list[dict] | None:
     # Load config
     if not args['url']:
         config_dict = {}
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, 'r') as fd:
+        if os.path.exists(const.CONFIG_PATH):
+            with open(const.CONFIG_PATH, 'r') as fd:
                 config_dict = yaml.safe_load(fd)
         if 'websites' in config_dict and len(config_dict['websites']) != 0:
             entries = list(config_dict['websites'].items())
@@ -27,7 +25,7 @@ def load_config(args) -> list[dict] | None:
             choice_prompt = []
             for i, entry in enumerate(entries):
                 choice_prompt.append(f'[green bold]{i}[/] - {entry[0]}')
-            console.print(_panel.Panel('\n'.join(choice_prompt), title='Found existed presets:'))
+            engine.console.print(_panel.Panel('\n'.join(choice_prompt), title='Found existed presets:'))
 
             choice = _prompt.IntPrompt.ask('Choose one', choices=choices, default=0, show_choices=False)
             if choice == len(choices) - 1:
@@ -60,8 +58,8 @@ def parse_args():
 
 
 def driver():
-    console.clear()
-    console.print(
+    engine.console.clear()
+    engine.console.print(
         _panel.Panel('Presented by [bold italic]NintenSAGA', title='[bold italic]DocCrawler',
                      subtitle='Note: Use CLI args for full functions', expand=True,
                      title_align='center'), style='green')
@@ -70,12 +68,12 @@ def driver():
     multi_args = load_config(args)
 
     if multi_args is None:
-        single_task(args)
+        engine.single_task(args)
     else:
-        console.print(_panel.Panel('Will run all the presets'), style='green')
+        engine.console.print(_panel.Panel('Will run all the presets'), style='green')
         for single_args in multi_args:
-            single_task(single_args)
-        console.rule('[green bold italic]All tasks complete![/]', style='green')
+            engine.single_task(single_args)
+        engine.console.rule('[green bold italic]All tasks complete![/]', style='green')
 
 
 if __name__ == '__main__':
