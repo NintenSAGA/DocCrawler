@@ -37,7 +37,8 @@ def get_arg_parser():
     return arg_parser
 
 
-def download_doc(download_path: str, url: str, filename: str, cookies: dict, update: bool, unzip: bool) -> str:
+def download_doc(download_path: str, url: str, filename: str, order: str, cookies: dict, update: bool,
+                 unzip: bool) -> str:
     response = requests.get(url, cookies=cookies, stream=True)
     path_str = urllib.parse.urlparse(response.url).path
     path_str = os.path.split(path_str)[-1]
@@ -51,6 +52,8 @@ def download_doc(download_path: str, url: str, filename: str, cookies: dict, upd
             ext = 'html'
         filename = filename.removesuffix(f'.{ext}')
         filename = f'{filename}.{ext}'
+
+    filename = order + filename
     path = os.path.join(download_path, filename)
 
     if update or not os.path.exists(path):
@@ -195,6 +198,7 @@ class CrawlTask:
                 furl = tag['href']
                 # Whether change names
                 name = None
+                this_order = ''
                 if self.args['name']:
                     if tag.text.strip() != '':
                         name = tag.text.strip()
@@ -202,12 +206,12 @@ class CrawlTask:
                         name = tag['title'].strip()
                 # Whether add order prefix
                 if self.args['order']:
-                    name = f'{order}. {name}'
+                    this_order = str(order) + '. '
                     order += 1
                 # Redirect URL
                 furl = _parse.urljoin(self.url, furl)
                 if furl not in url_map.keys():
-                    url_map[furl] = name
+                    url_map[furl] = (name, this_order)
 
         console.print(f'Found {len(url_map)} documents in total.')
         return list(url_map.items())
@@ -236,7 +240,8 @@ class CrawlTask:
             futures = []
             for pair in queue:
                 futures.append(
-                    executor.submit(download_doc, self.download_path, pair[0], pair[1], self.cookies, update, unzip))
+                    executor.submit(download_doc, self.download_path, pair[0], pair[1][0], pair[1][1], self.cookies,
+                                    update, unzip))
             # ---- Working Loop ---- #
             while completed < total:
                 done, not_done = _futures.wait(futures, return_when=_futures.FIRST_COMPLETED)

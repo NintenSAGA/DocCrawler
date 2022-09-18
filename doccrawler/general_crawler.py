@@ -17,6 +17,10 @@ def load_config(args) -> list[dict] | None:
         if os.path.exists(const.GENERAL_CONFIG_PATH):
             with open(const.GENERAL_CONFIG_PATH, 'r') as fd:
                 config_dict = yaml.safe_load(fd)
+        else:
+            with open(const.GENERAL_CONFIG_PATH, 'w') as _:
+                pass
+
         if config_dict is not None and 'websites' in config_dict and len(config_dict['websites']) != 0:
             entries = list(config_dict['websites'].items())
             entries.insert(0, ('None', ''))
