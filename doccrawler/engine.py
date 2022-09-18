@@ -61,24 +61,6 @@ def download_doc(download_path: str, url: str, filename: str, order: str, cookie
             for chunk in response.iter_content(chunk_size=128):
                 fd.write(chunk)
 
-    if unzip and re.match(r'.*\.(zip|rar)', filename) is not None:
-        out_dir = os.path.join(download_path, re.sub(r'\..*$', '', filename, count=1))
-
-        if filename.endswith('zip'):
-            with zipfile.ZipFile(path) as zf:
-                zi = zf.infolist()
-                for member in zi:
-                    member.filename = member.filename.encode('cp437').decode('gbk')
-                    zf.extract(member, path=out_dir)
-        elif filename.endswith('rar'):
-            if os.uname().sysname != 'Darwin':
-                raise RuntimeError('Unrar operation only supports macOS with Keka at present.')
-            if not os.path.exists(out_dir):
-                os.mkdir(out_dir)
-            subprocess.run('keka --cli unrar x -y'.split() + [path, out_dir], text=True,
-                           stdout=subprocess.DEVNULL)
-        os.remove(path)
-
     response.close()
     return filename
 
@@ -243,23 +225,51 @@ class CrawlTask:
                     executor.submit(download_doc, self.download_path, pair[0], pair[1][0], pair[1][1], self.cookies,
                                     update, unzip))
             # ---- Working Loop ---- #
+            file_list = []
             while completed < total:
                 done, not_done = _futures.wait(futures, return_when=_futures.FIRST_COMPLETED)
                 # ---- Gather results ---- #
                 for future in done:
                     if future.exception() is None:
                         name = future.result()
+                        file_list.append(name)
                         progress.console.print(f'< [white]Downloaded: {name}')
                     else:
-                        progress.console.print(future.exception(), style='red')
+                        progress.console.print(f'[red]{future.exception()}')
                         failed += 1
                     completed += 1
-                    progress.update(task, completed=completed)
+                progress.update(task, completed=completed)
                 # Update futures
                 futures = list(not_done)
 
             # ---- Fin ---- #
             progress.update(task, description='[green]Completed')
+
+        # ---- Unzip ---- #
+        if unzip:
+            with console.status('Unzipping files...'):
+                for filename in file_list:
+                    path = os.path.join(self.download_path, filename)
+                    out_dir = os.path.join(self.download_path, re.sub(r'\.[^.]*$', '', filename, count=1))
+
+                    if filename.endswith('zip'):
+                        with zipfile.ZipFile(path) as zf:
+                            zi = zf.infolist()
+                            for member in zi:
+                                member.filename = member.filename.encode('cp437').decode('gbk')
+                                zf.extract(member, path=out_dir)
+                    elif filename.endswith('rar'):
+                        if os.uname().sysname != 'Darwin':
+                            console.print('< [red]Unrar operation only supports macOS with Keka at present.')
+                            continue
+                        if not os.path.exists(out_dir):
+                            os.mkdir(out_dir)
+                        subprocess.run('keka --cli unrar x -y'.split() + [path, out_dir], text=True,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    else:
+                        continue
+                    console.print(f'< [white]Unzipped: {filename}')
+                    os.remove(path)
 
         success = len(queue) - failed
         return success, failed
