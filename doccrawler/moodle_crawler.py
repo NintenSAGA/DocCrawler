@@ -37,7 +37,7 @@ def fetch_course_list(cookies, moodle_config):
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
     title = soup.title.text
-    if title != SUPPOSE_MAIN_TITLE:
+    if re.match(rf'{SUPPOSE_MAIN_TITLE}', title.strip()) is None:
         return None
 
     # Course data

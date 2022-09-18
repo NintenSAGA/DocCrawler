@@ -13,4 +13,4 @@ DOWNLOAD_PATH = os.path.join(ROOT_PATH, 'Download/')
 
 # ---- Moodle ---- #
 MAIN_PAGE_URL = 'https://selearning.nju.edu.cn/my/'
-SUPPOSE_MAIN_TITLE = '个人主页'
+SUPPOSE_MAIN_TITLE = '(个人主页|Dashboard)'
