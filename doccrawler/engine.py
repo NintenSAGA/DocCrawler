@@ -1,7 +1,9 @@
 import argparse
 import os
 import re
+import subprocess
 import urllib.parse
+import zipfile
 from concurrent import futures as _futures
 from urllib import parse as _parse
 
@@ -29,12 +31,14 @@ def get_arg_parser():
     arg_parser.add_argument('-n', '--name', help='Use tag text as filename', action='store_true')
     arg_parser.add_argument('-d', '--dir', help='Output directory', type=str, default='')
     arg_parser.add_argument('-o', '--order', help='Add order prefix', action='store_true')
+    arg_parser.add_argument('-U', '--update', help='Update existed file', action='store_true')
+    arg_parser.add_argument('-z', '--unzip', help='Unzip compressed files', action='store_true')
 
     return arg_parser
 
 
-def download_doc(download_path: str, url: str, filename, cookies) -> str:
-    response = requests.get(url, cookies=cookies)
+def download_doc(download_path: str, url: str, filename: str, cookies: dict, update: bool, unzip: bool) -> str:
+    response = requests.get(url, cookies=cookies, stream=True)
     path_str = urllib.parse.urlparse(response.url).path
     path_str = os.path.split(path_str)[-1]
     path_str = urllib.parse.unquote(path_str)
@@ -48,9 +52,31 @@ def download_doc(download_path: str, url: str, filename, cookies) -> str:
         filename = filename.removesuffix(f'.{ext}')
         filename = f'{filename}.{ext}'
     path = os.path.join(download_path, filename)
-    with open(path, mode='wb') as fd:
-        fd.write(response.content)
 
+    if update or not os.path.exists(path):
+        with open(path, mode='wb') as fd:
+            for chunk in response.iter_content(chunk_size=128):
+                fd.write(chunk)
+
+    if unzip and re.match(r'.*\.(zip|rar)', filename) is not None:
+        out_dir = os.path.join(download_path, re.sub(r'\..*$', '', filename, count=1))
+
+        if filename.endswith('zip'):
+            with zipfile.ZipFile(path) as zf:
+                zi = zf.infolist()
+                for member in zi:
+                    member.filename = member.filename.encode('cp437').decode('gbk')
+                    zf.extract(member, path=out_dir)
+        elif filename.endswith('rar'):
+            if os.uname().sysname != 'Darwin':
+                raise RuntimeError('Unrar operation only supports macOS with Keka at present.')
+            if not os.path.exists(out_dir):
+                os.mkdir(out_dir)
+            subprocess.run('keka --cli unrar x -y'.split() + [path, out_dir], text=True,
+                           stdout=subprocess.DEVNULL)
+        os.remove(path)
+
+    response.close()
     return filename
 
 
@@ -106,9 +132,10 @@ class CrawlTask:
 
         if len(ext) == 0:
             self.args['all'] = True
-            console.print('Matching all extensions')
+            # console.print('Matching all extensions')
         else:
-            console.print(f'Extensions: {ext}')
+            # console.print(f'Extensions: {ext}')
+            pass
 
         try:
             if self.args['all']:
@@ -123,7 +150,7 @@ class CrawlTask:
 
     def __get_pattern_with_regex(self):
         re_str = self.args['regex']
-        console.print(f'Matching pattern {re_str}')
+        # console.print(f'Matching pattern {re_str}')
         return re.compile(rf'{re_str}')
 
     def __get_pattern(self):
@@ -195,13 +222,21 @@ class CrawlTask:
                 _progress.TimeElapsedColumn(),
         ) as progress, \
                 _futures.ThreadPoolExecutor() as executor:
+            # ---- Args info ---- #
+            will, wont = 'Will', 'Won\'t'
+            # Update existed files
+            update = self.args['update']
+            progress.console.print(f'{will if update else wont} update existed files')
+            # Unzip compressed files
+            unzip = self.args['unzip']
+            progress.console.print(f'{will if unzip else wont} unzip compressed files.')
             # ---- Setup workers ---- #
             completed, total = 0, len(queue)
             task = progress.add_task('Downloading...', total=total)
             futures = []
             for pair in queue:
-                futures.append(executor.submit(download_doc, self.download_path, pair[0], pair[1], self.cookies))
-
+                futures.append(
+                    executor.submit(download_doc, self.download_path, pair[0], pair[1], self.cookies, update, unzip))
             # ---- Working Loop ---- #
             while completed < total:
                 done, not_done = _futures.wait(futures, return_when=_futures.FIRST_COMPLETED)
@@ -211,6 +246,7 @@ class CrawlTask:
                         name = future.result()
                         progress.console.print(f'< [white]Downloaded: {name}')
                     else:
+                        progress.console.print(future.exception(), style='red')
                         failed += 1
                     completed += 1
                     progress.update(task, completed=completed)

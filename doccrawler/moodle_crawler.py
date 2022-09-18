@@ -28,7 +28,7 @@ def load_config() -> (dict, dict):
 def save_config(moodle_config, config_dict):
     config_dict['moodle'] = moodle_config
     with open(MOODLE_CONFIG_PATH, 'w') as fd:
-        yaml.safe_dump(config_dict, fd)
+        yaml.safe_dump(config_dict, fd, allow_unicode=True)
 
 
 def fetch_course_list(cookies, moodle_config):
@@ -64,6 +64,8 @@ def fetch_course_list(cookies, moodle_config):
                 os.makedirs(info['dir'])
         if 'name' not in info.keys():
             info['name'] = name
+        if 'my_args' not in info.keys():
+            info['my_args'] = []
 
         info_dicts[cid] = info
         results.append((url, cid))
@@ -104,9 +106,11 @@ def driver():
     save_config(moodle_config, config_dict)
 
     for course in courses:
+        course_info = moodle_config['courses'][course[1]]
         argv = ['-u', course[0],
                 '-r', 'https://selearning.nju.edu.cn/mod/resource/.*',
-                '-d', moodle_config['courses'][course[1]]['dir']]
+                '-d', course_info['dir']]
+        argv += course_info['my_args']
         args = vars(parser.parse_args(argv))
         engine.CrawlTask(args, cookies).run()
 
