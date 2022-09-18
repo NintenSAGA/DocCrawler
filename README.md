@@ -111,7 +111,7 @@ websites:
 
 ### MoodleCrawler
 
-Can be used to on the new Moodle website of NJU SE. This will automatically scan all the courses you have joined and download their resources.
+Can be used on the new Moodle website of NJU SE. This will automatically scan all the courses you have joined and download their resources.
 
 A valid Cookies string should be provided when you run it for the first time, or when the previous cookies is invalid.
 
