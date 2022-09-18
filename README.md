@@ -24,7 +24,7 @@ Dependencies are managed by Poetry. Hence you can either install them manually o
 
 ## Usage
 
-DocCrawler contains two applications.
+DocCrawler contains two tools.
 
 ### GeneralCrawler
 
