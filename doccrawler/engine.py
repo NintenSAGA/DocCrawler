@@ -37,8 +37,7 @@ def get_arg_parser():
     return arg_parser
 
 
-def download_doc(download_path: str, url: str, filename: str, order: str, cookies: dict, update: bool,
-                 unzip: bool) -> str:
+def download_doc(download_path: str, url: str, filename: str, order: str, cookies: dict, update: bool) -> (str, bool):
     response = requests.get(url, cookies=cookies, stream=True)
     path_str = urllib.parse.urlparse(response.url).path
     path_str = os.path.split(path_str)[-1]
@@ -56,13 +55,15 @@ def download_doc(download_path: str, url: str, filename: str, order: str, cookie
     filename = order + filename
     path = os.path.join(download_path, filename)
 
+    updated = False
     if update or not os.path.exists(path):
+        updated = True
         with open(path, mode='wb') as fd:
             for chunk in response.iter_content(chunk_size=128):
                 fd.write(chunk)
 
     response.close()
-    return filename
+    return filename, updated
 
 
 class CrawlTask:
@@ -223,7 +224,7 @@ class CrawlTask:
             for pair in queue:
                 futures.append(
                     executor.submit(download_doc, self.download_path, pair[0], pair[1][0], pair[1][1], self.cookies,
-                                    update, unzip))
+                                    update))
             # ---- Working Loop ---- #
             file_list = []
             while completed < total:
@@ -231,9 +232,9 @@ class CrawlTask:
                 # ---- Gather results ---- #
                 for future in done:
                     if future.exception() is None:
-                        name = future.result()
+                        name, updated = future.result()
                         file_list.append(name)
-                        progress.console.print(f'< [white]Downloaded: {name}')
+                        progress.console.print(f'< [white]{"Downloaded" if updated else "Existed"}: {name}')
                     else:
                         progress.console.print(f'[red]{future.exception()}')
                         failed += 1
@@ -269,7 +270,6 @@ class CrawlTask:
                     else:
                         continue
                     console.print(f'< [white]Unzipped: {filename}')
-                    os.remove(path)
 
         success = len(queue) - failed
         return success, failed
