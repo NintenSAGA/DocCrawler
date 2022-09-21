@@ -7,24 +7,18 @@ import requests
 from PIL import Image
 
 from const import TMP_PATH, console
+from doccrawler.const import QR_IMG_PATH, MOODLE_LOGIN, AUTH_API, QR_API, CHECK_API
 
-QR_IMG_PATH = os.path.join(TMP_PATH, './qrcode.png')
 if not os.path.exists(TMP_PATH):
     os.makedirs(TMP_PATH)
 
-MOODLE_LOGIN = 'https://selearning.nju.edu.cn/login/index.php?authCAS=CAS'
-AUTH_API = 'https://authserver.nju.edu.cn/authserver/qrCode/get?ts={}'
-QR_API = 'https://authserver.nju.edu.cn/authserver/qrCode/code?uuid={}'
-CHECK_API = 'https://authserver.nju.edu.cn/authserver/qrCode/status?ts={}&uuid={}'
-MOODLE_AUTH_API = 'https://selearning.nju.edu.cn/login/index.php?authCAS=CAS&ticket={}'
-session = requests.session()
 
-
-def ts():
+def __ts():
     return int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
 
 
 def getCookie() -> str:
+    session = requests.session()
     r = session.get(MOODLE_LOGIN, allow_redirects=True)
     soup = bs4.BeautifulSoup(r.content.decode('utf-8'), 'html.parser')
 
@@ -35,7 +29,7 @@ def getCookie() -> str:
 
     login_api = f"https://authserver.nju.edu.cn{form['action']}"
 
-    auth = AUTH_API.format(ts())
+    auth = AUTH_API.format(__ts())
     uuid = session.get(auth).text
     payload['uuid'] = uuid
 
@@ -46,7 +40,7 @@ def getCookie() -> str:
     img = Image.open(QR_IMG_PATH)
     img.show()
 
-    check = CHECK_API.format(ts(), uuid)
+    check = CHECK_API.format(__ts(), uuid)
     status = 0
     console.print('> Please scan the QR code with WeChat...')
     while status != '1':
