@@ -21,3 +21,6 @@ AUTH_API = 'https://authserver.nju.edu.cn/authserver/qrCode/get?ts={}'
 QR_API = 'https://authserver.nju.edu.cn/authserver/qrCode/code?uuid={}'
 CHECK_API = 'https://authserver.nju.edu.cn/authserver/qrCode/status?ts={}&uuid={}'
 MOODLE_AUTH_API = 'https://selearning.nju.edu.cn/login/index.php?authCAS=CAS&ticket={}'
+
+MOODLE_RESOURCE_PAT = 'https://selearning.nju.edu.cn/mod/resource/.*'
+MOODLE_FOLDER_PAT = 'https://selearning.nju.edu.cn/mod/folder/.*'

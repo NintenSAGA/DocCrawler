@@ -9,7 +9,9 @@ import yaml
 
 import engine
 import moodle_cookie
-from const import console, MAIN_PAGE_URL, SUPPOSE_MAIN_TITLE, MOODLE_CONFIG_PATH, DOWNLOAD_PATH
+from const import console, MAIN_PAGE_URL, SUPPOSE_MAIN_TITLE, \
+    MOODLE_CONFIG_PATH, DOWNLOAD_PATH, MOODLE_RESOURCE_PAT, \
+    MOODLE_FOLDER_PAT
 
 
 def load_config() -> (dict, dict):
@@ -110,11 +112,29 @@ def driver():
     for course in courses:
         course_info = moodle_config['courses'][course[1]]
         argv = ['-u', course[0],
-                '-r', 'https://selearning.nju.edu.cn/mod/resource/.*',
+                '-r', MOODLE_RESOURCE_PAT,
                 '-d', course_info['dir']]
         argv += course_info['my_args']
         args = vars(parser.parse_args(argv))
         engine.CrawlTask(args, cookies).run()
+
+        soup = bs4.BeautifulSoup(requests.get(course[0], cookies=cookies).content.decode('utf-8'), 'html.parser')
+        for tag in soup.find_all(name='a', href=re.compile(MOODLE_FOLDER_PAT)):
+            url = urllib.parse.urljoin(course[0], tag['href'])
+            out_dir = os.path.join(course_info['dir'], tag.text)
+            out_dir = out_dir.rstrip(' 文件夹')
+            console.print(f'> Found directory: {tag.text}')
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
+            argv = [
+                '-u', url,
+                '-r', '.*mod_folder.*',
+                '-d', out_dir
+            ]
+            args = vars(parser.parse_args(argv))
+            engine.CrawlTask(args, cookies).run()
+            if len(os.listdir(out_dir)) == 0:
+                os.rmdir(out_dir)
 
 
 if __name__ == '__main__':

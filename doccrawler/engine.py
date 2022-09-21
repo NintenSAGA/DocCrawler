@@ -1,13 +1,13 @@
 import argparse
 import os
 import re
-import subprocess
 import urllib.parse
 import zipfile
 from concurrent import futures as _futures
 from urllib import parse as _parse
 
 import bs4
+import rarfile
 import requests
 from rich import progress as _progress, panel as _panel, columns as _columns
 from rich.markup import escape
@@ -233,7 +233,7 @@ class CrawlTask:
                 for future in done:
                     if future.exception() is None:
                         name, updated = future.result()
-                        file_list.append(name)
+                        file_list.append((name, updated))
                         progress.console.print(f'< [white]{"Downloaded" if updated else "Existed"}: {name}')
                     else:
                         progress.console.print(f'[red]{future.exception()}')
@@ -249,9 +249,14 @@ class CrawlTask:
         # ---- Unzip ---- #
         if unzip:
             with console.status('Unzipping files...'):
-                for filename in file_list:
+                for filename, updated in file_list:
+                    if not updated:
+                        console.print(f'< [white]Skipped: {filename}')
+                        continue
                     path = os.path.join(self.download_path, filename)
                     out_dir = os.path.join(self.download_path, re.sub(r'\.[^.]*$', '', filename, count=1))
+                    if not os.path.exists(out_dir):
+                        os.mkdir(out_dir)
 
                     if filename.endswith('zip'):
                         with zipfile.ZipFile(path) as zf:
@@ -260,13 +265,15 @@ class CrawlTask:
                                 member.filename = member.filename.encode('cp437').decode('gbk')
                                 zf.extract(member, path=out_dir)
                     elif filename.endswith('rar'):
-                        if os.uname().sysname != 'Darwin':
-                            console.print('< [red]Unrar operation only supports macOS with Keka at present.')
-                            continue
-                        if not os.path.exists(out_dir):
-                            os.mkdir(out_dir)
-                        subprocess.run('keka --cli unrar x -y'.split() + [path, out_dir], text=True,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                        try:
+                            with rarfile.RarFile(path) as rf:
+                                ri = rf.infolist()
+                                for member in ri:
+                                    rf.extract(member, path=out_dir)
+                        except Exception as e:
+                            console.print(f'[red]Got error: {e}')
+                            if os.uname().sysname == 'Darwin':
+                                console.print('Try install unrar on your mac: \nbrew install carlocab/personal/unrar')
                     else:
                         continue
                     console.print(f'< [white]Unzipped: {filename}')
