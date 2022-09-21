@@ -16,6 +16,20 @@ import taskexception
 from const import DOWNLOAD_PATH, console
 
 
+class TaskInfo:
+    def __init__(self,
+                 download_path, url, filename,
+                 order, cookies, update,
+                 unzip):
+        self.download_path = download_path
+        self.url = url
+        self.filename = filename
+        self.order = order
+        self.cookies = cookies
+        self.update = update
+        self.unzip = unzip
+
+
 class BoxProgress(_progress.Progress):
     def get_renderables(self):
         yield _panel.Panel(self.make_tasks_table(self.tasks), border_style='white')
@@ -37,33 +51,107 @@ def get_arg_parser():
     return arg_parser
 
 
-def download_doc(download_path: str, url: str, filename: str, order: str, cookies: dict, update: bool) -> (str, bool):
-    response = requests.get(url, cookies=cookies, stream=True)
+def open_page(url, cookies={}):
+    return bs4.BeautifulSoup(requests.get(url, cookies=cookies).content.decode('utf-8'), 'html5lib')
+
+
+def download_doc(task: TaskInfo, my_console=console) -> (str, bool):
+    response = requests.get(task.url, cookies=task.cookies, stream=True)
     path_str = urllib.parse.urlparse(response.url).path
     path_str = os.path.split(path_str)[-1]
     path_str = urllib.parse.unquote(path_str)
 
-    if filename is None:
+    if task.filename is None:
         filename = path_str
     else:
         ext = path_str.split('.')[-1]
         if ext.endswith('/'):
             ext = 'html'
-        filename = filename.removesuffix(f'.{ext}')
+        filename = task.filename.removesuffix(f'.{ext}')
         filename = f'{filename}.{ext}'
 
-    filename = order + filename
-    path = os.path.join(download_path, filename)
+    filename = task.order + filename
+    path = os.path.join(task.download_path, filename)
 
+    # ---- Update ---- #
     updated = False
-    if update or not os.path.exists(path):
+    if task.update or not os.path.exists(path):
         updated = True
         with open(path, mode='wb') as fd:
             for chunk in response.iter_content(chunk_size=128):
                 fd.write(chunk)
 
+    # ---- Unzip ---- #
+    if updated and task.unzip and re.match(r'.*(rar|zip)$', filename) is not None:
+        out_dir = os.path.join(task.download_path, re.sub(r'\.[^.]*$', '', filename, count=1))
+        if not os.path.exists(out_dir):
+            os.mkdir(out_dir)
+
+        unzipped = False
+        if filename.endswith('zip'):
+            with zipfile.ZipFile(path) as zf:
+                zi = zf.infolist()
+                for member in zi:
+                    member.filename = member.filename.encode('cp437').decode('gbk')
+                    zf.extract(member, path=out_dir)
+            unzipped = True
+        elif filename.endswith('rar'):
+            try:
+                with rarfile.RarFile(path) as rf:
+                    ri = rf.infolist()
+                    for member in ri:
+                        rf.extract(member, path=out_dir)
+                unzipped = True
+            except Exception as e:
+                my_console.print(f'[red]Got error: {e}')
+                if os.uname().sysname == 'Darwin':
+                    my_console.print('Try install unrar on your mac: \nbrew install carlocab/personal/unrar')
+        if unzipped:
+            my_console.print(f'< [white]Unzipped: {filename}')
+
     response.close()
     return filename, updated
+
+
+def parallel_process(queue: list[TaskInfo]):
+    failed = 0
+    with BoxProgress(
+            _progress.TextColumn("[progress.description]{task.description}"),
+            _progress.SpinnerColumn(),
+            _progress.BarColumn(),
+            _progress.TaskProgressColumn(),
+            _progress.TimeElapsedColumn(),
+    ) as progress, \
+            _futures.ThreadPoolExecutor(max_workers=32) as executor:
+        # ---- Setup workers ---- #
+        completed, total = 0, len(queue)
+        task = progress.add_task('Downloading...', total=total)
+        futures = []
+        for t_info in queue:
+            futures.append(executor.submit(download_doc, t_info, progress.console))
+        # ---- Working Loop ---- #
+        file_list = []
+        while completed < total:
+            done, not_done = _futures.wait(futures, return_when=_futures.FIRST_COMPLETED)
+            # ---- Gather results ---- #
+            for future in done:
+                if future.exception() is None:
+                    name, updated = future.result()
+                    file_list.append((name, updated))
+                    progress.console.print(f'< [white]{"Downloaded" if updated else "Existed"}: {name}')
+                else:
+                    progress.console.print(f'[red]{future.exception()}')
+                    failed += 1
+                completed += 1
+            progress.update(task, completed=completed)
+            # Update futures
+            futures = list(not_done)
+
+        # ---- Fin ---- #
+        progress.update(task, description='[green]Completed')
+
+    success = len(queue) - failed
+    return success, failed
 
 
 class CrawlTask:
@@ -193,93 +281,13 @@ class CrawlTask:
                     order += 1
                 # Redirect URL
                 furl = _parse.urljoin(self.url, furl)
+
                 if furl not in url_map.keys():
-                    url_map[furl] = (name, this_order)
+                    url_map[furl] = TaskInfo(self.download_path, furl, name, this_order,
+                                             self.cookies, self.args['update'], self.args['unzip'])
 
         console.print(f'Found {len(url_map)} documents in total.')
-        return list(url_map.items())
-
-    def __parallel_process(self, queue):
-        failed = 0
-        with BoxProgress(
-                _progress.TextColumn("[progress.description]{task.description}"),
-                _progress.SpinnerColumn(),
-                _progress.BarColumn(),
-                _progress.TaskProgressColumn(),
-                _progress.TimeElapsedColumn(),
-        ) as progress, \
-                _futures.ThreadPoolExecutor() as executor:
-            # ---- Args info ---- #
-            will, wont = 'Will', 'Won\'t'
-            # Update existed files
-            update = self.args['update']
-            progress.console.print(f'{will if update else wont} update existed files')
-            # Unzip compressed files
-            unzip = self.args['unzip']
-            progress.console.print(f'{will if unzip else wont} unzip compressed files.')
-            # ---- Setup workers ---- #
-            completed, total = 0, len(queue)
-            task = progress.add_task('Downloading...', total=total)
-            futures = []
-            for pair in queue:
-                futures.append(
-                    executor.submit(download_doc, self.download_path, pair[0], pair[1][0], pair[1][1], self.cookies,
-                                    update))
-            # ---- Working Loop ---- #
-            file_list = []
-            while completed < total:
-                done, not_done = _futures.wait(futures, return_when=_futures.FIRST_COMPLETED)
-                # ---- Gather results ---- #
-                for future in done:
-                    if future.exception() is None:
-                        name, updated = future.result()
-                        file_list.append((name, updated))
-                        progress.console.print(f'< [white]{"Downloaded" if updated else "Existed"}: {name}')
-                    else:
-                        progress.console.print(f'[red]{future.exception()}')
-                        failed += 1
-                    completed += 1
-                progress.update(task, completed=completed)
-                # Update futures
-                futures = list(not_done)
-
-            # ---- Fin ---- #
-            progress.update(task, description='[green]Completed')
-
-        # ---- Unzip ---- #
-        if unzip:
-            with console.status('Unzipping files...'):
-                for filename, updated in file_list:
-                    if not updated:
-                        console.print(f'< [white]Skipped: {filename}')
-                        continue
-                    path = os.path.join(self.download_path, filename)
-                    out_dir = os.path.join(self.download_path, re.sub(r'\.[^.]*$', '', filename, count=1))
-                    if not os.path.exists(out_dir):
-                        os.mkdir(out_dir)
-
-                    if filename.endswith('zip'):
-                        with zipfile.ZipFile(path) as zf:
-                            zi = zf.infolist()
-                            for member in zi:
-                                member.filename = member.filename.encode('cp437').decode('gbk')
-                                zf.extract(member, path=out_dir)
-                    elif filename.endswith('rar'):
-                        try:
-                            with rarfile.RarFile(path) as rf:
-                                ri = rf.infolist()
-                                for member in ri:
-                                    rf.extract(member, path=out_dir)
-                        except Exception as e:
-                            console.print(f'[red]Got error: {e}')
-                            if os.uname().sysname == 'Darwin':
-                                console.print('Try install unrar on your mac: \nbrew install carlocab/personal/unrar')
-                    else:
-                        continue
-                    console.print(f'< [white]Unzipped: {filename}')
-
-        success = len(queue) - failed
-        return success, failed
+        return list(url_map.values())
 
     def run(self):
         console.print()
@@ -288,7 +296,7 @@ class CrawlTask:
         queue = self.__collect_docs()
         if queue is None:
             return
-        success, failed = self.__parallel_process(queue)
+        success, failed = parallel_process(queue)
 
         columns = _columns.Columns(expand=True)
         columns.add_renderable(_panel.Panel(f'{success}', title='Success', style='green'))

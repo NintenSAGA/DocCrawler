@@ -24,3 +24,6 @@ MOODLE_AUTH_API = 'https://selearning.nju.edu.cn/login/index.php?authCAS=CAS&tic
 
 MOODLE_RESOURCE_PAT = 'https://selearning.nju.edu.cn/mod/resource/.*'
 MOODLE_FOLDER_PAT = 'https://selearning.nju.edu.cn/mod/folder/.*'
+
+SLIDE_SEC_CHN = '课件'
+VIDEO_SEC_CHN = '课堂视频'

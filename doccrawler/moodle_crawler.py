@@ -10,8 +10,7 @@ import yaml
 import engine
 import moodle_cookie
 from const import console, MAIN_PAGE_URL, SUPPOSE_MAIN_TITLE, \
-    MOODLE_CONFIG_PATH, DOWNLOAD_PATH, MOODLE_RESOURCE_PAT, \
-    MOODLE_FOLDER_PAT
+    MOODLE_CONFIG_PATH, DOWNLOAD_PATH, SLIDE_SEC_CHN, VIDEO_SEC_CHN, MOODLE_RESOURCE_PAT, MOODLE_FOLDER_PAT
 
 
 def load_config() -> (dict, dict):
@@ -55,7 +54,7 @@ def fetch_course_list(cookies, moodle_config):
         url = course['href']
         cid = int(url.split('=')[-1])
         name = course.find_next(name='span', attrs={'class': 'media-body'}).text
-        console.print(f'Found: {name}')
+        # console.print(f'Found: {name}')
 
         info = {}
         if cid in info_dicts.keys():
@@ -68,9 +67,11 @@ def fetch_course_list(cookies, moodle_config):
             info['name'] = name
         if 'my_args' not in info.keys():
             info['my_args'] = []
+        if 'exclude' not in info.keys():
+            info['exclude'] = False
 
         info_dicts[cid] = info
-        results.append((url, cid))
+        results.append({'url': url, 'cid': cid})
 
     moodle_config['courses'] = info_dicts
     return results
@@ -109,32 +110,92 @@ def driver():
 
     save_config(moodle_config, config_dict)
 
+    queue = []
     for course in courses:
-        course_info = moodle_config['courses'][course[1]]
-        argv = ['-u', course[0],
-                '-r', MOODLE_RESOURCE_PAT,
-                '-d', course_info['dir']]
-        argv += course_info['my_args']
-        args = vars(parser.parse_args(argv))
-        engine.CrawlTask(args, cookies).run()
+        url = course['url']
+        cid = course['cid']
+        course_info = moodle_config['courses'][cid]
+        if course_info['exclude']:
+            console.print(f'> Excluded: {course_info["name"]}')
+            continue
 
-        soup = bs4.BeautifulSoup(requests.get(course[0], cookies=cookies).content.decode('utf-8'), 'html.parser')
-        for tag in soup.find_all(name='a', href=re.compile(MOODLE_FOLDER_PAT)):
-            url = urllib.parse.urljoin(course[0], tag['href'])
-            out_dir = os.path.join(course_info['dir'], tag.text)
-            out_dir = out_dir.rstrip(' 文件夹')
-            console.print(f'> Found directory: {tag.text}')
+        args = vars(parser.parse_args(course_info['my_args']))
+
+        home_soup = engine.open_page(url, cookies)
+        sec_map = {}
+
+        for section in home_soup.find_all(name='li', id=re.compile(r'section-[0-9]')):
+            name = section.h3.text.strip()
+            sec_map[name] = section
+
+        # ---- Slides ---- #
+        if SLIDE_SEC_CHN in sec_map.keys():
+            slide_sec = sec_map[SLIDE_SEC_CHN]
+            # Simple files
+            tags = slide_sec.find_all(name='a', href=re.compile(MOODLE_RESOURCE_PAT))
+            for i, tag in enumerate(tags, start=1):
+                # print(tag.text)
+                url = tag['href']
+                name = None
+                order = ''
+                if args['name']:
+                    name = tag.text.strip()
+                if args['order']:
+                    order = f'{i}. '
+                queue.append(engine.TaskInfo(course_info['dir'], url, name,
+                                             order, cookies, args['update'],
+                                             args['unzip']))
+            # Folders
+            tags = slide_sec.find_all(name='a', href=re.compile(MOODLE_FOLDER_PAT))
+            for tag in tags:
+                furl = tag['href']
+                out_dir = os.path.join(course_info['dir'], tag.text)
+                out_dir = out_dir.rstrip(' 文件夹').rstrip(' Folder')
+                if not os.path.exists(out_dir):
+                    os.makedirs(out_dir)
+                folder = engine.open_page(furl, cookies)
+                sub_tags = folder.find_all(name='a', href=re.compile(f'.*mod_folder.*'))
+                for i, sub_tag in enumerate(sub_tags, start=1):
+                    sub_url = sub_tag['href']
+                    name = None
+                    order = ''
+                    if args['name']:
+                        name = sub_tag.text.strip()
+                    if args['order']:
+                        order = f'{i}. '
+                    queue.append(engine.TaskInfo(out_dir, sub_url, name,
+                                                 order, cookies, args['update'],
+                                                 args['unzip']))
+        # ---- Videos ---- #
+        if VIDEO_SEC_CHN in sec_map.keys():
+            ans = console.input('Found videos. Would you like to download them? (Y/N)')
+            if ans.lower() != 'y':
+                continue
+            video_sec = sec_map[VIDEO_SEC_CHN]
+            tags = video_sec.find_all(name='a', href=re.compile(MOODLE_RESOURCE_PAT))
+            out_dir = os.path.join(course_info['dir'], 'videos')
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
-            argv = [
-                '-u', url,
-                '-r', '.*mod_folder.*',
-                '-d', out_dir
-            ]
-            args = vars(parser.parse_args(argv))
-            engine.CrawlTask(args, cookies).run()
-            if len(os.listdir(out_dir)) == 0:
-                os.rmdir(out_dir)
+            for i, tag in enumerate(tags, start=1):
+                video = engine.open_page(tag['href'], cookies)
+                v_tag = video.find(name='source', type='video/mp4')
+                v_url = v_tag['src']
+                name = None
+                order = ''
+                if args['name']:
+                    name = v_tag.text.strip()
+                if args['order']:
+                    order = f'{i}. '
+                queue.append(engine.TaskInfo(out_dir, v_url, name,
+                                             order, cookies, args['update'],
+                                             args['unzip']))
+
+        console.print(f'> Found {len(queue)} files for {course_info["name"]}')
+
+    engine.parallel_process(queue)
+    # soup = bs4.BeautifulSoup(requests.get(course[0], cookies=cookies).content.decode('utf-8'), 'html.parser')
+    # for tag in soup.find_all(name='a', href=re.compile(MOODLE_FOLDER_PAT)):
+    #     url = urllib.parse.urljoin(course[0], tag['href'])
 
 
 if __name__ == '__main__':

@@ -8,14 +8,12 @@
 
 2022.09.21:
 
+- Now Moodle Crawler can download **videos** and **folders**
+- Now you can exclude particluar courses in Moodle Crawler
+
 - Now Moodle Crawler supports **login by scanning WeChat QRCode**.
 - Download path is changed to `.../DocCrawler/Download`
 - Now the crawler will show whether a file was updated
-
-## TODO
-
-- [ ] Moodle folder
-- [ ] Moodle video
 
 ## Setup
 
@@ -144,5 +142,6 @@ moodle:
       dir: ...
       my_args: [$arg1$, $arg2$, ...]
       name: ... # Generated
+      exclude: ... # True or False
 ```
 
