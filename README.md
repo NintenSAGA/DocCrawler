@@ -23,6 +23,9 @@ rich = "^12.5.1"
 PyYAML = "^6.0"
 bs4 = "^0.0.1"
 requests = "^2.28.1"
+Pillow = "^9.2.0"
+rarfile = "^4.0"
+html5lib = "^1.1
 ```
 
 Dependencies are managed by Poetry. Hence you can either install them manually or (requiring Poetry installed):
@@ -62,8 +65,7 @@ options:
   -d DIR, --dir DIR     Output directory
   -o, --order           Add order prefix
   -U, --update          Update existed file
-  -z, --unzip           Unzip compressed files 
-  											* For `.rar`, only macOS with Keka cli is supported now *
+  -z, --unzip           Unzip compressed files
 ```
 
 Or execute it without any args to enter the interactive setup:
