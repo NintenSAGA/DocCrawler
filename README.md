@@ -4,13 +4,18 @@
 [TOC]
 -->
 
-## Big Updates
+## Updates
 
 2022.09.21:
 
 - Now Moodle Crawler supports **login by scanning WeChat QRCode**.
 - Download path is changed to `.../DocCrawler/Download`
 - Now the crawler will show whether a file was updated
+
+## TODO
+
+- [ ] Moodle folder
+- [ ] Moodle video
 
 ## Setup
 
