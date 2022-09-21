@@ -6,9 +6,9 @@ from http.cookies import SimpleCookie
 import bs4
 import requests
 import yaml
-from rich import prompt as _prompt
 
 import engine
+import moodle_cookie
 from const import console, MAIN_PAGE_URL, SUPPOSE_MAIN_TITLE, MOODLE_CONFIG_PATH, DOWNLOAD_PATH
 
 
@@ -81,10 +81,12 @@ def driver():
     auth_ok = 'cookies' in moodle_config.keys()
     while True:
         if not auth_ok:
-            raw_cookies = _prompt.Prompt.ask('Please enter your cookies')
+            # raw_cookies = _prompt.Prompt.ask('Please enter your cookies')
+            raw_cookies = moodle_cookie.getCookie()
             moodle_config['cookies'] = raw_cookies
         else:
             raw_cookies = str(moodle_config['cookies'])
+
         sc = SimpleCookie()
         for cookie in raw_cookies.split('; '):
             cookie = urllib.parse.quote(cookie, safe='=')

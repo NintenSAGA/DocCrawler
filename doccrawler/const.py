@@ -9,7 +9,8 @@ ROOT_PATH = sys.path[0]
 GENERAL_CONFIG_PATH = os.path.join(ROOT_PATH, '../general_config.yaml')
 MOODLE_CONFIG_PATH = os.path.join(ROOT_PATH, '../moodle_config.yaml')
 
-DOWNLOAD_PATH = os.path.join(ROOT_PATH, 'Download/')
+DOWNLOAD_PATH = os.path.join(ROOT_PATH, '../Download/')
+TMP_PATH = os.path.join(ROOT_PATH, './tmp/')
 
 # ---- Moodle ---- #
 MAIN_PAGE_URL = 'https://selearning.nju.edu.cn/my/'

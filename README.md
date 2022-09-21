@@ -4,6 +4,14 @@
 [TOC]
 -->
 
+## Big Updates
+
+2022.09.21:
+
+- Now Moodle Crawler supports **login by scanning WeChat QRCode**.
+- Download path is changed to `.../DocCrawler/Download`
+- Now the crawler will show whether a file was updated
+
 ## Setup
 
 ```
@@ -30,7 +38,7 @@ DocCrawler contains two tools.
 
 Can be used to crawl docs on any websites, filtered by extensions or regex pattern.
 
-Default output directory is `.../DocCrawler/doccrawler/Download`
+Default output directory is `.../DocCrawler/Download`
 
 You can use it with cli arguments:
 
