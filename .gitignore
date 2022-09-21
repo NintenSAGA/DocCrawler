@@ -139,3 +139,4 @@ dmypy.json
 # Pyre type checker
 .pyre/
 moodle_config.yaml.bak
+moodle_config copy.yaml
