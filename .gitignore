@@ -140,3 +140,4 @@ dmypy.json
 .pyre/
 moodle_config.yaml.bak
 moodle_config copy.yaml
+.DS_Store
